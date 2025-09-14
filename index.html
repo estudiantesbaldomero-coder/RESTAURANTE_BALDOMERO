@@ -5,35 +5,26 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Restaurante Escolar IE Baldomero Sanín Cano</title>
 
-<!-- Bootstrap -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<!-- Librerías -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
 
 <style>
-  body { padding: 1rem; background:#f8f9fa; }
+  body { padding:1rem; background:#f8f9fa; }
   header { text-align:center; margin-bottom:1rem; }
-  .scanner-canvas { width:100%; border-radius:8px; }
+  .scanner-canvas { width:100%; height:auto; border-radius:8px; }
   #registeredList { max-height:200px; overflow:auto; margin-top:1rem; }
-  .flash { animation: flashAnim 0.5s ease-out; }
-  @keyframes flashAnim { 0% { background-color:#ffff99; } 100% { background-color:transparent; } }
-  /* Print styles for QR labels */
-  @media print {
-    body * { visibility: hidden; }
-    #print-area, #print-area * { visibility: visible; }
-    #print-area { position: absolute; left:0; top:0; width:100%; }
-    .label { page-break-inside: avoid; margin:6px; }
-  }
+  .flash { animation: flashAnim 0.5s ease; }
+  @keyframes flashAnim { 0%{background:#d4edda;} 50%{background:#fff;} 100%{background:#d4edda;} }
+  @media print { body *{visibility:hidden;} #print-area, #print-area *{visibility:visible;} #print-area{position:absolute; left:0; top:0; width:100%;} .label{page-break-inside:avoid;} }
 </style>
 </head>
 <body>
 <header>
   <h1>Restaurante Escolar</h1>
   <h3>IE Baldomero Sanín Cano</h3>
-  <p class="text-muted">Carga CSV • Escáner • Asistencia • Audio • Impresión • Responsive</p>
+  <p class="text-muted">Carga CSV • Escáner • Asistencia • Impresión • Responsive</p>
 </header>
 
 <div class="container">
@@ -42,222 +33,251 @@
       <div class="card mb-3">
         <div class="card-body">
           <h5>Importar estudiantes (CSV)</h5>
-          <input id="csvFile" type="file" accept=".csv,text/csv" class="form-control mb-2" />
-          <small class="text-muted">CSV: encabezados <code>name,grade</code> (name obligatorio)</small>
+          <input id="csvFile" type="file" accept=".csv,text/csv" class="form-control mb-2"/>
+          <small class="text-muted">CSV: encabezados <code>name,grade</code></small>
           <button id="importBtn" class="btn btn-primary w-100 mt-2">Cargar CSV</button>
-          <hr />
+          <hr/>
           <h5>Escáner QR</h5>
           <div id="scanner-controls" class="mb-2">
             <button id="startScanner" class="btn btn-outline-primary w-100 mb-1">Iniciar escáner</button>
             <button id="stopScanner" class="btn btn-outline-secondary w-100 mb-1">Detener escáner</button>
-            <small class="text-muted">El QR debe contener JSON: <code>{"school":"IE_Baldomero","id":"xxx"}</code></small>
           </div>
           <div id="scanner-area" style="display:none;">
-            <video id="video" autoplay playsinline class="scanner-canvas"></video>
+            <video id="video" autoplay playsinline style="width:100%;border-radius:8px;"></video>
             <canvas id="canvas" style="display:none;"></canvas>
-            <div id="scanStatus" class="mt-2 text-success"></div>
-            <div id="registeredList" class="list-group"></div>
+            <div class="mt-2">
+              <small id="scanStatus" class="text-success"></small>
+            </div>
           </div>
+          <h6>Estudiantes registrados hoy:</h6>
+          <div id="registeredList" class="list-group"></div>
           <hr/>
-          <h5>Impresión de QRs</h5>
+          <h5>Impresión</h5>
           <button id="printAll" class="btn btn-dark w-100">Imprimir todos los QRs</button>
-          <div id="print-area" style="display:none; background:#fff; padding:1rem;">
-            <div id="labelsContainer" class="d-flex flex-wrap gap-2"></div>
-          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <h5>Dashboard (tiempo real)</h5>
+          <p>Total estudiantes: <strong id="totalStudents">0</strong></p>
+          <p>Asistencias hoy (<span id="todayDate"></span>): <strong id="attToday">0</strong></p>
+          <p>Asistencias totales: <strong id="attTotal">0</strong></p>
+          <button id="clearData" class="btn btn-sm btn-danger">Borrar toda la base (local)</button>
         </div>
       </div>
     </div>
 
     <div class="col-lg-8">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h5>Lista de todos los estudiantes</h5>
-          <div id="studentsList" class="list-group" style="max-height:60vh; overflow:auto;"></div>
-        </div>
+      <div id="print-area" style="display:none; background:#fff; padding:1rem;">
+        <div id="labelsContainer" class="d-flex flex-wrap gap-2"></div>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-const STORAGE_STUDENTS = 'rs_students_v1';
-const STORAGE_ATT = 'rs_attendance_v1';
+const STORAGE_STUDENTS='rs_students_v2';
+const STORAGE_ATT='rs_attendance_v2';
 
-function readStudents(){ return JSON.parse(localStorage.getItem(STORAGE_STUDENTS) || '[]'); }
+function readStudents(){ return JSON.parse(localStorage.getItem(STORAGE_STUDENTS)||'[]'); }
 function writeStudents(arr){ localStorage.setItem(STORAGE_STUDENTS, JSON.stringify(arr)); }
-function readAttendance(){ return JSON.parse(localStorage.getItem(STORAGE_ATT) || '{}'); }
+function readAttendance(){ return JSON.parse(localStorage.getItem(STORAGE_ATT)||'{}'); }
 function writeAttendance(obj){ localStorage.setItem(STORAGE_ATT, JSON.stringify(obj)); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-function todayKey(){ const d=new Date(); return `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`; }
+function todayKey(){ return new Date().toISOString().slice(0,10); }
 
-const studentsList = document.getElementById('studentsList');
-const registeredList = document.getElementById('registeredList');
-const scanStatus = document.getElementById('scanStatus');
+const totalStudentsEl=document.getElementById('totalStudents');
+const attTodayEl=document.getElementById('attToday');
+const attTotalEl=document.getElementById('attTotal');
+const registeredListEl=document.getElementById('registeredList');
+document.getElementById('todayDate').textContent=todayKey();
 
-let videoStream=null;
-let scanning=false;
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-
-let lastScanTime = 0;
-const SCAN_COOLDOWN_MS = 1500;
-
-/* Render students */
-function renderAllStudents(){
-  const students = readStudents();
-  studentsList.innerHTML='';
-  students.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
-    const item=document.createElement('div');
-    item.className='list-group-item';
-    item.textContent=`${s.name} - ${s.grade||''}`;
-    studentsList.appendChild(item);
-  });
+function renderDashboard(){
+  const students=readStudents();
+  const attendance=readAttendance();
+  totalStudentsEl.textContent=students.length;
+  const today=todayKey();
+  attTodayEl.textContent=attendance[today]?Object.keys(attendance[today]).length:0;
+  attTotalEl.textContent=Object.values(attendance).reduce((s,obj)=>s+Object.keys(obj).length,0);
+  renderRegisteredList();
+}
+function renderRegisteredList(){
+  const attendance=readAttendance();
+  const students=readStudents();
+  const today=todayKey();
+  registeredListEl.innerHTML='';
+  if(attendance[today]){
+    Object.keys(attendance[today]).forEach(id=>{
+      const s=students.find(st=>st.id===id);
+      if(s){
+        const item=document.createElement('div');
+        item.className='list-group-item flash';
+        item.textContent=`${s.name} - ${s.grade}`;
+        registeredListEl.appendChild(item);
+      }
+    });
+  }
 }
 
-/* CSV Import */
-document.getElementById('importBtn').addEventListener('click', ()=>{
+document.getElementById('importBtn').addEventListener('click',()=>{
   const f=document.getElementById('csvFile').files[0];
-  if(!f){ alert('Seleccione un CSV'); return; }
-  Papa.parse(f,{header:true,skipEmptyLines:true,complete:results=>{
+  if(!f){alert('Seleccione un archivo CSV');return;}
+  Papa.parse(f,{header:true,skipEmptyLines:true,complete(results){
     const rows=results.data;
-    const arr=readStudents();
+    let arr=readStudents();
     let added=0;
-    rows.forEach(r=>{
-      const name=(r.name||r.Nombre||'').trim();
-      const grade=(r.grade||r.Grade||r.grado||'').trim();
-      if(!name) return;
-      arr.push({id:uid(), name, grade, createdAt:new Date().toISOString()});
+    for(const r of rows){
+      const name=(r.name||'').trim();
+      const grade=(r.grade||'').trim();
+      if(!name) continue;
+      arr.push({id:uid(),name,grade,createdAt:new Date().toISOString()});
       added++;
-    });
+    }
     writeStudents(arr);
-    alert(`Importados ${added} estudiantes`);
-    renderAllStudents();
-  }});
+    alert(`Importación finalizada: ${added} estudiantes añadidos.`);
+    renderDashboard();
+  },error(err){alert('Error parseando CSV: '+err.message);}});
 });
 
-/* QR Scanner */
-document.getElementById('startScanner').addEventListener('click', async ()=>{
+/* ---- QR SCANNER ---- */
+let videoStream=null;
+let scanning=false;
+const video=document.getElementById('video');
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const scanStatus=document.getElementById('scanStatus');
+let lastScanTime=0;
+const SCAN_COOLDOWN_MS=1500;
+
+document.getElementById('startScanner').addEventListener('click',startScanner);
+document.getElementById('stopScanner').addEventListener('click',stopScanner);
+
+async function startScanner(){
   if(scanning) return;
   try{
-    videoStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    video.srcObject=videoStream;
-    scanning=true;
+    let stream=null;
+    try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:"environment"}}}); }
+    catch(e){ stream=await navigator.mediaDevices.getUserMedia({video:true}); }
+    video.srcObject=stream;
+    videoStream=stream;
     document.getElementById('scanner-area').style.display='block';
+    scanning=true;
     scanLoop();
-  }catch(e){ alert('Error cámara: '+e.message); }
-});
-
-document.getElementById('stopScanner').addEventListener('click', ()=>{
+  }catch(err){alert('No se pudo acceder a la cámara. '+err.message);}
+}
+function stopScanner(){
   scanning=false;
-  if(videoStream){ videoStream.getTracks().forEach(t=>t.stop()); videoStream=null; }
+  if(videoStream){videoStream.getTracks().forEach(t=>t.stop()); videoStream=null;}
   document.getElementById('scanner-area').style.display='none';
   scanStatus.textContent='';
-  registeredList.innerHTML='';
-});
-
+}
 function scanLoop(){
   if(!scanning) return;
   if(video.readyState===video.HAVE_ENOUGH_DATA){
     canvas.width=video.videoWidth;
     canvas.height=video.videoHeight;
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    const imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
-    const code=jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:'attemptBoth'});
-    if(code){
-      const now=Date.now();
-      if(now-lastScanTime>SCAN_COOLDOWN_MS){
-        lastScanTime=now;
-        try{
-          const parsed=JSON.parse(code.data);
-          if(parsed && parsed.school && parsed.id){
-            const msg = registerAttendance(parsed.id);
-            scanStatus.textContent = msg.text;
-            speak(msg.text);
-            flashRegistered(msg.studentName);
-          } else scanStatus.textContent='QR inválido';
-        }catch(e){ scanStatus.textContent='QR inválido'; }
-      }
-    }else{ scanStatus.textContent='Buscando QR...'; }
+    try{
+      const imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:"attemptBoth"});
+      if(code){
+        const now=Date.now();
+        if(now-lastScanTime>SCAN_COOLDOWN_MS){
+          lastScanTime=now;
+          let parsed=null;
+          try{ parsed=JSON.parse(code.data); } catch(e){ parsed=null; }
+          if(parsed && parsed.name){
+            const s=readStudents().find(st=>st.name===parsed.name && st.grade===parsed.grade);
+            if(s){
+              const ok=registerAttendance(s.id);
+              scanStatus.textContent=ok?`Asistencia registrada: ${s.name}`:`Ya registrada hoy: ${s.name}`;
+              speak(ok?`Estudiante ${s.name} registrado`:`Estudiante ${s.name} ya registrado`);
+              renderRegisteredList();
+              flashEffect();
+            }else{
+              scanStatus.textContent='Estudiante no encontrado';
+              speak('Estudiante no encontrado');
+            }
+          } else {
+            scanStatus.textContent='QR inválido';
+          }
+        }
+      } else { scanStatus.textContent='Buscando QR...'; }
+    }catch(e){console.error(e);}
   }
   requestAnimationFrame(scanLoop);
 }
 
+function flashEffect(){
+  registeredListEl.classList.add('flash');
+  setTimeout(()=>registeredListEl.classList.remove('flash'),500);
+}
+
+function speak(msg){
+  if('speechSynthesis' in window){
+    const utter=new SpeechSynthesisUtterance(msg);
+    window.speechSynthesis.speak(utter);
+  }
+}
+
+/* ---- Attendance ---- */
 function registerAttendance(studentId){
   const attendance=readAttendance();
   const today=todayKey();
   if(!attendance[today]) attendance[today]={};
-  const student=readStudents().find(s=>s.id===studentId);
-  if(!student) return {text:'Estudiante no encontrado', studentName:''};
-  if(attendance[today][studentId]) return {text:`${student.name} ya registrado`, studentName:student.name};
+  if(attendance[today][studentId]) return false;
   attendance[today][studentId]=new Date().toISOString();
   writeAttendance(attendance);
-  addToRegisteredList(student.name);
-  return {text:`Estudiante registrado: ${student.name}`, studentName:student.name};
-}
-
-function addToRegisteredList(name){
-  const item=document.createElement('div');
-  item.className='list-group-item';
-  item.textContent=name;
-  registeredList.appendChild(item);
-  registeredList.scrollTop = registeredList.scrollHeight;
-}
-
-function flashRegistered(name){
-  const lastItem=registeredList.lastChild;
-  if(lastItem){
-    lastItem.classList.add('flash');
-    setTimeout(()=>{ lastItem.classList.remove('flash'); },500);
-  }
-}
-
-function speak(text){
-  if('speechSynthesis' in window){
-    const msg=new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(msg);
-  }
+  renderDashboard();
+  return true;
 }
 
 /* ---- Print all QRs ---- */
-function buildPrintLabels(){
+document.getElementById('printAll').addEventListener('click',()=>{
   const students=readStudents();
   const container=document.getElementById('labelsContainer');
   container.innerHTML='';
-  students.forEach(s=>{
+  for(const s of students){
     const label=document.createElement('div');
     label.className='label';
-    label.style='width:180px; padding:6px; border:1px solid #ddd; display:flex; flex-direction:column; align-items:center; background:#fff;';
+    label.style='width:180px;padding:6px;border:1px solid #ddd;display:flex;flex-direction:column;align-items:center;margin:6px;background:#fff;';
     const holder=document.createElement('div');
     label.appendChild(holder);
     const nameEl=document.createElement('div');
-    nameEl.style='font-size:12px; margin-top:6px; text-align:center;';
-    nameEl.textContent=`${s.name} - ${s.grade||''}`;
+    nameEl.style='font-size:12px;margin-top:6px;text-align:center;';
+    nameEl.textContent=`${s.name} - ${s.grade}`;
     label.appendChild(nameEl);
     container.appendChild(label);
-    const payload=JSON.stringify({school:'IE_Baldomero', id:s.id});
-    new QRCode(holder, {text:payload, width:140, height:140});
-  });
-  return container;
-}
-
-document.getElementById('printAll').addEventListener('click', ()=>{
-  buildPrintLabels();
+    new QRCode(holder,{text:JSON.stringify({name:s.name,grade:s.grade}),width:140,height:140});
+  }
   document.getElementById('print-area').style.display='block';
-  setTimeout(()=>{ window.print(); document.getElementById('print-area').style.display='none'; },500);
+  setTimeout(()=>{window.print();document.getElementById('print-area').style.display='none';},500);
 });
 
-/* ---- Demo students si no hay ---- */
+/* ---- Clear Data ---- */
+document.getElementById('clearData').addEventListener('click',()=>{
+  if(confirm('Borrar estudiantes y asistencias?')){
+    localStorage.removeItem(STORAGE_STUDENTS);
+    localStorage.removeItem(STORAGE_ATT);
+    registeredListEl.innerHTML='';
+    renderDashboard();
+  }
+});
+
+/* ---- Demo students ---- */
 if(readStudents().length===0){
   const sample=[
-    {id:uid(), name:'Carlos Pérez', grade:'10-1', createdAt:new Date().toISOString()},
-    {id:uid(), name:'María Gómez', grade:'9-2', createdAt:new Date().toISOString()},
-    {id:uid(), name:'Juan Rodríguez', grade:'11-3', createdAt:new Date().toISOString()},
-    {id:uid(), name:'Ana Morales', grade:'10-2', createdAt:new Date().toISOString()}
+    {id:uid(),name:'Carlos Pérez',grade:'10-1',createdAt:new Date().toISOString()},
+    {id:uid(),name:'María Gómez',grade:'9-2',createdAt:new Date().toISOString()},
+    {id:uid(),name:'Juan Rodríguez',grade:'11-3',createdAt:new Date().toISOString()},
+    {id:uid(),name:'Ana Morales',grade:'10-2',createdAt:new Date().toISOString()}
   ];
   writeStudents(sample);
+  renderDashboard();
 }
-renderAllStudents();
+
+/* Stop camera when hidden */
+document.addEventListener('visibilitychange',()=>{if(document.hidden) stopScanner();});
 </script>
 </body>
 </html>
